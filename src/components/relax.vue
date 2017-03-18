@@ -25,7 +25,7 @@
 		},
 		created() {
 			this.maskShow = true
-			this.$http.get('http://gank.io/api/data/前端/10/1').then((data) => {
+			this.$http.get('https://gank.io/api/data/前端/10/1').then((data) => {
 				this.gankData = data.body.results
 				// console.log(data.body.results)
 				this.maskShow = false

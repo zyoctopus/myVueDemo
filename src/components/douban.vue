@@ -18,7 +18,14 @@
 			</div>
 			<div class="title-wrapper">
 				<span class="title">{{typeTitle}}</span>
-				<i class="searchIcon iconfont icon-sousuo-sousuo"></i>
+				<i class="searchIcon iconfont icon-sousuo-sousuo" @click="searchIsShow"></i>
+				<transition name="search">
+					<div class="search" v-show="searchShow">
+						<form @submit.prevent="searchSubmit(searchKey)">
+							<input type="text" class="input" v-model="searchKey">
+						</form>
+					</div>
+				</transition>
 			</div>
 			<div ref="movie" class="movie-wrapper">
 				<ul>
@@ -44,6 +51,7 @@
 						</div>
 					</li>
 				</ul>
+				<div class="searchMask" v-show="searchShow" @click="searchIsHide"></div>
 			</div>	
 		</div>
 	</div>
@@ -58,7 +66,8 @@
 				movieData: '',
 				searchKey: '',
 				typeTitle: '',
-				maskShow: false
+				maskShow: false,
+				searchShow: false
 			}
 		},
 		created() {
@@ -80,6 +89,7 @@
 		methods: {
 			showList() {
 				this.listShow = !this.listShow
+				this.searchShow = false
 			},
 			mySplice(arr) {
 				let str = ''
@@ -110,6 +120,18 @@
 					this.maskShow = false
 				})
 			},
+			searchSubmit(key) {
+				this.maskShow = true
+				this.searchShow = false
+				this.$http.jsonp(`https://api.douban.com/v2/movie/search?q=${key}`)
+				.then((data) => {
+					// console.log(data.body.subjects)
+					this.movieData = data.body.subjects
+					this.typeTitle = '搜索'
+					this.movieScroll.refresh()
+					this.maskShow = false
+				})
+			},
 			top250() {
 				this.maskShow = true
 				this.$http.jsonp('https://api.douban.com/v2/movie/top250')
@@ -120,6 +142,12 @@
 					this.movieScroll.refresh()
 					this.maskShow = false
 				})
+			},
+			searchIsShow() {
+				this.searchShow = true
+			},
+			searchIsHide() {
+				this.searchShow = false
 			}
 		}
 	}
@@ -190,6 +218,21 @@
 					line-height: 20px;
 					padding: 10px;
 				}
+				.search{
+					position: absolute;
+					top: 0;
+					left: 0;
+					width: 100%;
+					padding-top: 10px;
+					transition: all 0.3s;
+					&.search-enter,&.search-leave-active{
+						transform: translate3d(0, -100%, 0);
+					}
+					.input{
+						border: 1px solid rgb(224, 128, 49);
+						width: 50%;
+					}
+				}
 			}
 			.movie-wrapper{
 				position: absolute;
@@ -227,6 +270,15 @@
 							bottom: 0;
 						}
 					}
+				}
+				.searchMask{
+					position: absolute;
+					top: 0;
+					left: 0;
+					width: 100%;
+					height: 100%;
+					z-index: 20;
+					background-color: rgba(0, 0, 0, .5);
 				}
 			}
 			.mask{
