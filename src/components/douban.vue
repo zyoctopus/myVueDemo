@@ -130,6 +130,7 @@
 					this.typeTitle = '搜索'
 					this.movieScroll.refresh()
 					this.maskShow = false
+					this.searchKey = ''
 				})
 			},
 			top250() {
