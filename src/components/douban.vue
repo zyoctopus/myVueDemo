@@ -5,9 +5,9 @@
 			<div class="list-wrapper">
 				<transition name="list">
 					<ul class="itemList" v-show="listShow">
-						<li class="item" @click="inTheaters">正在热映</li>
-						<li class="item" @click="comingSoon">即将上映</li>
-						<li class="item" @click="top250">top250</li>
+						<li class="item" @click="requestDouban('inTheaters')">正在热映</li>
+						<li class="item" @click="requestDouban('comingSoon')">即将上映</li>
+						<li class="item" @click="requestDouban('top250')">top250</li>
 					</ul>
 				</transition>
 			</div>
@@ -21,14 +21,14 @@
 				<i class="searchIcon iconfont icon-sousuo-sousuo" @click="searchIsShow"></i>
 				<transition name="search">
 					<div class="search" v-show="searchShow">
-						<form @submit.prevent="searchSubmit(searchKey)">
+						<form @submit.prevent="requestDouban('search',null,submitCallback)">
 							<input type="text" class="input" v-model="searchKey">
 						</form>
 					</div>
 				</transition>
 			</div>
 			<div ref="movie" class="movie-wrapper">
-				<ul>
+				<ul ref="scrollTarget">
 					<li class="movie-item" v-for="item in movieData" v-if="movieData">
 						<div class="movie-image">
 							<img :src="item.images.large" width="80" height="110">
@@ -50,8 +50,10 @@
 							<span class="rating">{{item.rating.average}}</span>
 						</div>
 					</li>
+					<li class="noMore" v-show="noMoreIsShow">没有更多数据了</li>
 				</ul>
 				<div class="searchMask" v-show="searchShow" @click="searchIsHide"></div>
+				
 			</div>	
 		</div>
 	</div>
@@ -63,30 +65,65 @@
 		data() {
 			return {
 				listShow: false,
-				movieData: '',
+				movieData: [],
 				searchKey: '',
 				typeTitle: '',
 				maskShow: false,
-				searchShow: false
+				searchShow: false,
+				requestData: {
+					inTheaters: {
+						url: 'https://api.douban.com/v2/movie/in_theaters',
+						title: '正在热映'
+					},
+					comingSoon: {
+						url: 'https://api.douban.com/v2/movie/coming_soon',
+						title: '即将上映'
+					},
+					top250: {
+						url: 'https://api.douban.com/v2/movie/top250',
+						title: 'top250'
+					},
+					search: {
+						url: 'https://api.douban.com/v2/movie/search',
+						title: '搜索结果'
+					}
+				},
+				// 用于下拉加载更多
+				start: 0,
+				currentType: '',
+				flag: true,
+				noMoreIsShow: false,
+				cacheKey: ''
 			}
 		},
 		created() {
-			this.maskShow = true
-			this.$http.jsonp('https://api.douban.com/v2/movie/in_theaters')
-			.then((data) => {
-				if (data.ok) {
-					this.movieData = data.body.subjects
-					this.typeTitle = '正在热映'
-					this.$nextTick(() => {
-						this.movieScroll = new BScroll(this.$refs.movie, {
-							click: true
-						})
-					})
-					this.maskShow = false
-				}
-			})
+			this.requestDouban('inTheaters',
+				{
+					'start': 0,
+					'count': 20
+				},
+				this.createScroll)
 		},
 		methods: {
+			createScroll() {
+				this.$nextTick(() => {
+					this.movieScroll = new BScroll(this.$refs.movie, {
+						click: true,
+						probeType: 3
+					})
+					this.movieScroll.on('scroll', (pos) => {
+						let target = this.$refs.scrollTarget
+						let isBottom = target.scrollHeight - target.parentNode.clientHeight
+						if (Math.abs(pos.y) >= isBottom && this.flag) {
+							this.flag = false
+							this.requestDouban(this.currentType, {
+								start: (++this.start) * 20,
+								count: 20
+							})
+						}
+					})
+				})
+			},
 			showList() {
 				this.listShow = !this.listShow
 				this.searchShow = false
@@ -98,50 +135,51 @@
 				}
 				return str.slice(0, -1)
 			},
-			comingSoon() {
-				this.maskShow = true
-				this.$http.jsonp('https://api.douban.com/v2/movie/coming_soon')
-				.then((data) => {
-					// console.log(data.body.subjects)
-					this.movieData = data.body.subjects
-					this.typeTitle = '即将上映'
-					this.movieScroll.refresh()
-					this.maskShow = false
-				})
+			submitCallback() {
+				this.movieData = []
+				this.start = 0
 			},
-			inTheaters() {
+			requestDouban(type, params, callback) {
+				if (this.currentType !== type) {
+					this.movieData = []
+					this.start = 0
+				}
+				type = type || 'inTheaters'
+				this.currentType = type
 				this.maskShow = true
-				this.$http.jsonp('https://api.douban.com/v2/movie/in_theaters')
-				.then((data) => {
-					// console.log(data.body.subjects)
-					this.movieData = data.body.subjects
-					this.typeTitle = '正在热映'
-					this.movieScroll.refresh()
-					this.maskShow = false
-				})
-			},
-			searchSubmit(key) {
-				this.maskShow = true
-				this.searchShow = false
-				this.$http.jsonp(`https://api.douban.com/v2/movie/search?q=${key}`)
-				.then((data) => {
-					// console.log(data.body.subjects)
-					this.movieData = data.body.subjects
-					this.typeTitle = '搜索'
-					this.movieScroll.refresh()
-					this.maskShow = false
+				this.noMoreIsShow = false
+				params = params || {start: 0, count: 20}
+				if (type === 'search') {
+					params.q = this.searchKey ? this.searchKey : this.cacheKey
+					this.searchKey && (this.cacheKey = this.searchKey)
 					this.searchKey = ''
+					this.searchShow = false
+					if (callback) {
+						callback()
+						callback = null
+					}
+				}
+				// console.log(params)
+
+				this.$http.jsonp(this.requestData[type].url, {
+					params: params
 				})
-			},
-			top250() {
-				this.maskShow = true
-				this.$http.jsonp('https://api.douban.com/v2/movie/top250')
 				.then((data) => {
-					// console.log(data.body.subjects)
-					this.movieData = data.body.subjects
-					this.typeTitle = 'top250'
-					this.movieScroll.refresh()
-					this.maskShow = false
+					if (data.ok) {
+						this.movieData = this.movieData.concat(data.body.subjects)
+						this.typeTitle = this.requestData[type].title
+						this.maskShow = false
+						callback && callback()
+						this.$nextTick(() => {
+							this.movieScroll && this.movieScroll.refresh()
+						})
+						// console.log(this.movieData)
+						if ((params.start + params.count) <= data.body.total) {
+							this.flag = true
+						} else {
+							this.noMoreIsShow = true
+						}
+					}
 				})
 			},
 			searchIsShow() {
@@ -170,9 +208,6 @@
 			text-align: center;
 			z-index: 50;
 			.list-wrapper{
-				// width: 80px;
-				// height: 140px;
-				// overflow: hidden;
 				.itemList{
 					position: absolute;
 					right: -70px;
@@ -272,6 +307,11 @@
 						}
 					}
 				}
+				.noMore{
+					width: 100%;
+					line-height: 40px;
+					text-align: center;
+				}
 				.searchMask{
 					position: absolute;
 					top: 0;
@@ -281,6 +321,7 @@
 					z-index: 20;
 					background-color: rgba(0, 0, 0, .5);
 				}
+					
 			}
 			.mask{
 				position: absolute;
